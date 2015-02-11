@@ -1,0 +1,42 @@
+ 
+html {
+	background: #ccc;
+	height: 100%;
+	font-family: sans-serif;
+	display: -webkit-flex;
+	display: flex;
+	flex-direction: column;
+}
+body {
+	height: 100%;
+	padding: 15px;
+	display: -webkit-flex;
+	display: flex;
+	flex-direction: row;
+	flex: auto;
+}
+
+
+#left-row {
+	max-height: 100%;
+	overflow: auto;
+	flex-grow: 1;
+}
+
+#right-row {
+	width: 220px;
+}
+
+#console {
+	height: 100%;
+	width: 100%;
+}
+
+
+.right {
+	float: right;
+}
+
+.invisible {
+	visibility: hidden;
+}

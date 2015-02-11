@@ -1,0 +1,18 @@
+{
+  "name": "MAVBridge",
+  "version": "0.0.1",
+  "description": "The program connects to COM port and creates UDP server for incoming CGS connections",
+  "main": "MAVBridge.js",
+  "dependencies": {
+    "express": "^4.11.2",
+    "serialport": "^1.4.10",
+    "mavlink": "^1.0.1",
+    "socket.io": "^1.3.3"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Vavooon",
+  "license": "LGPL"
+}
