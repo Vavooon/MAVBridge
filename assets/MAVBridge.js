@@ -68,7 +68,7 @@ $( function() {
 						'<h5 class="panel-title"><a data-toggle="collapse" data-parent="#accordion" href="#item-' + 
 						itemCounter +
 						'" aria-expanded="true" aria-controls="item-' + itemCounter +
-						'"> '+ message.title + 
+						'"> '+ message.name + 
 						'  </a></h5></div><div id="item-' + 
 						itemCounter +
 						'" class="panel-collapse collapse" role="tabpanel" aria-labelledby="headingOne"> '+ 

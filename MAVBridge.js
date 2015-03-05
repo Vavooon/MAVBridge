@@ -1,3 +1,5 @@
+var c = console.log.bind( console );
+
 
 var events = require( 'events' );
 //var mavlink = require('./mavlink.js');
@@ -21,6 +23,33 @@ app.use( '/assets', express.static( 'assets' ) );
 
 var mavlink = require( 'mavlink' );
 
+var mavlinkMessage = function(buffer) {
+	//Reported length
+	this.length = buffer[1];
+	
+	//Sequence number
+	this.sequence = buffer[2];
+	
+	//System ID
+	this.system = buffer[3];
+	
+	//Component ID
+	this.component = buffer[4];
+	
+	//Message ID
+	this.id = buffer[5];
+	
+	//Message payload buffer
+	this.payload = new Buffer(this.length);
+	buffer.copy(this.payload,0,6,6+this.length);
+	
+	//Checksum
+	this.checksum = buffer.readUInt16LE(this.length+6);
+	
+	//Whole message as a buffer
+	this.buffer = new Buffer(this.length + 8);
+	buffer.copy(this.buffer,0,0,8+this.length);
+}
 
 mavlink.prototype.parseChar = function(ch) {
 	//If we have no data yet, look for start character
@@ -76,13 +105,13 @@ mavlink.prototype.parseChar = function(ch) {
 			if ((this.sysid == 0 && this.compid == 0) || (message.system == this.sysid && message.component == this.compid)) {
 				//fire an event with the message data
 				this.emit("message", message);
-				
 				//fire additional event for specific message type
 				this.emit(this.getMessageName(this.buffer[5]), message, this.decodeMessage(message));
 				
 				//We got a message, so reset things
 				this.bufferIndex = 0;
 				this.messageLength = 0;
+				//c( message );
 				return message;
 			}
 		} else {
@@ -115,23 +144,20 @@ function disconnectFromPort( callback ) {
 }
 
 io.on('connection', function (socket) {
-	
+	var portSink;
 	socket.on( 'connectToPort', function ( portName ) {
-		connectToPort( data, socket );
-		var portSink = new Sink( { type: 'com', port: portName } );
+		//connectToPort( portName, socket );
+		portSink = new Sink( { type: 'com', port: portName } );
+		io.emit( 'portState', !!portSink );
 	});
 	
 	socket.on( 'disconnectFromPort', function (data) {
-		disconnectFromPort( function () {
-			io.emit( 'portState', openedPort );
-		});
+		portSink.destroy();
+		portSink = false;
+		io.emit( 'portState', !!portSink );
 	});
 	
-	io.emit( 'portState', openedPort );
-	
-	
-	
-	
+	io.emit( 'portState', !!portSink );
 	
 	SerialPort.list( function ( err, ports ) {
 		socket.emit('portsList', ports );
@@ -160,12 +186,8 @@ server.on("message", function (msg, rinfo) {
 
 function Sink ( o ) {
 	
-	var type = options.type;
-	var name = options.name;
-	
-	
-	this.name = name;
-	
+	var type = o.type;
+	var name = o.type+ '-' + o.port;
 	switch( type ) {
 		case 'udp':
 			UdpSink.call( this, o );
@@ -176,28 +198,39 @@ function Sink ( o ) {
 		break;
 	}
 	
+	this.getName = function() {
+		return name;
+	}
 	
 	router.registerSink( this );
 }
 
 function UdpSink( o ) {
+	var self = this;
 	var dgram = require("dgram");
 	var udpServer = dgram.createSocket("udp4");
+	
+	this.send = function( data ) {
+		udpServer.send( data, 0, data.length, 14550, 'localhost' );
+	}
+	
+	udpServer.on( 'message', function( data ) {
+		self.emit( 'data', data );
+	});
+	udpServer.bind( o.port );
 }
 
 function ComSink ( o ) {
-	var port = new SerialPort.SerialPort( options.port, { baudrate: 115200 }, false );
+	var port = new SerialPort.SerialPort( o.port, { baudrate: 115200 }, false );
+	var self = this;
 	port.open( function (error) {
 		if ( error ) {
 			io.emit( 'message', { origin: 'system', data: '' + error });
 		} else {
-			port.on('data', function( data ) {
-				var message = myMAV.parse( data );
-				if ( message ) {
-					router.send( mavlink.decodeMessage( message ) );
-				}
-			});
-			openedPort = portName;
+			port.on('data', (function( data ) {
+				this.emit( 'data', data );
+			}).bind( self ));
+			openedPort = o.port;
 			io.emit( 'portState', openedPort );
 		}
 	});
@@ -207,7 +240,7 @@ function ComSink ( o ) {
 	
 	this.destroy = function() {
 		port.close();
-		router.unregisterSink( this );
+		router.unregisterSink( self );
 	}
 }
 
@@ -218,15 +251,29 @@ util.inherits(Sink, events.EventEmitter);
 
 function Router () {
 	var sinks = {};
-	this.registerSink( sink ) {
-		sinks[ sink.name ] = sink;
+	
+	function readData( data ) {
+		c( this );
+		router.send( this.getName(), data );
+		var m = myMAV.parse( data, function( m ) {
+			if ( m ) {
+				io.emit( 'message', { origin: 'device', name: myMAV.getMessageName( m.id ), data: myMAV.decodeMessage( m ) });
+			}
+		} );
 	}
 	
-	this.unregisterSink( sink ) {
-		sinks.splice( sinks.indexOf( sink ), 1 );
+	this.registerSink = function( sink ) {
+		sinks[ sink.getName() ] = sink;
+		sink.on( 'data', readData );
+	}
+	
+	this.unregisterSink = function( sink ) {
+		delete sinks[ sink.getName() ];
+		sink.removeListener( 'data', readData );
 	}
 	
 	this.send = function ( sender, data ) {
+		console.log( sender, data );
 		for ( var i in sinks ) {
 			if ( i !== sender ) {
 				sinks[ i ].send( data );
@@ -234,3 +281,10 @@ function Router () {
 		}
 	}
 }
+
+
+
+var router = new Router;
+
+
+var udpSink = new Sink( { type: 'udp', port: 14550 } );
