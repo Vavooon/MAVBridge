@@ -133,7 +133,7 @@ mavlink.prototype.parse = function( buffer, callback ) {
 }
 
 
-var myMAV = new mavlink( 1, 1 );
+var myMAV = new mavlink();
 
 
 function disconnectFromPort( callback ) {
@@ -187,7 +187,7 @@ server.on("message", function (msg, rinfo) {
 function Sink ( o ) {
 	
 	var type = o.type;
-	var name = o.type+ '-' + o.port;
+	var id = o.type+ '-' + o.port;
 	switch( type ) {
 		case 'udp':
 			UdpSink.call( this, o );
@@ -198,8 +198,8 @@ function Sink ( o ) {
 		break;
 	}
 	
-	this.getName = function() {
-		return name;
+	this.getId = function() {
+		return id;
 	}
 	
 	router.registerSink( this );
@@ -209,15 +209,17 @@ function UdpSink( o ) {
 	var self = this;
 	var dgram = require("dgram");
 	var udpServer = dgram.createSocket("udp4");
+	var port = o.port;
+	var host = o.host;
 	
 	this.send = function( data ) {
-		udpServer.send( data, 0, data.length, 14550, 'localhost' );
+		udpServer.send( data, 0, data.length, port, host );
 	}
 	
 	udpServer.on( 'message', function( data ) {
 		self.emit( 'data', data );
 	});
-	udpServer.bind( o.port );
+	udpServer.bind( 14555 );
 }
 
 function ComSink ( o ) {
@@ -253,27 +255,25 @@ function Router () {
 	var sinks = {};
 	
 	function readData( data ) {
-		c( this );
-		router.send( this.getName(), data );
-		var m = myMAV.parse( data, function( m ) {
-			if ( m ) {
-				io.emit( 'message', { origin: 'device', name: myMAV.getMessageName( m.id ), data: myMAV.decodeMessage( m ) });
+		router.send( this.getId(), data );
+		myMAV.parse( data, function( message ) {
+			if ( message ) {
+				io.emit( 'message', { origin: 'device', name: myMAV.getMessageName( message.id ), data: myMAV.decodeMessage( message ) });
 			}
 		} );
 	}
 	
 	this.registerSink = function( sink ) {
-		sinks[ sink.getName() ] = sink;
+		sinks[ sink.getId() ] = sink;
 		sink.on( 'data', readData );
 	}
 	
 	this.unregisterSink = function( sink ) {
-		delete sinks[ sink.getName() ];
+		delete sinks[ sink.getId() ];
 		sink.removeListener( 'data', readData );
 	}
 	
 	this.send = function ( sender, data ) {
-		console.log( sender, data );
 		for ( var i in sinks ) {
 			if ( i !== sender ) {
 				sinks[ i ].send( data );
@@ -287,4 +287,4 @@ function Router () {
 var router = new Router;
 
 
-var udpSink = new Sink( { type: 'udp', port: 14550 } );
+var udpSink = new Sink( { type: 'udp', host: 'localhost', port: 14550 } );

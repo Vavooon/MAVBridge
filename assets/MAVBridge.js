@@ -1,7 +1,7 @@
 $( function() {
 	c = console.log.bind( console );
 	
-	var socket = io();
+	var socket = io.connect('http://localhost');
 	$( '#connect-form' ).on('submit', function(){
 		//$('#m').val('');
 		if ($( "#connect-button" ).prop('value') == 'Connect' ) {
